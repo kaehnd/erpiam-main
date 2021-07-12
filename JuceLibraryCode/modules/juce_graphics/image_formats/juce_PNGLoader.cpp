@@ -62,8 +62,7 @@ namespace pnglibNamespace
                                         "-Wimplicit-fallthrough",
                                         "-Wtautological-constant-out-of-range-compare",
                                         "-Wzero-as-null-pointer-constant",
-                                        "-Wcomma",
-                                        "-Wmaybe-uninitialized")
+                                        "-Wcomma")
 
   #undef check
   using std::abs;

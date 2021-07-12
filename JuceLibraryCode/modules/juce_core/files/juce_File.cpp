@@ -231,7 +231,7 @@ String File::addTrailingSeparator (const String& path)
 }
 
 //==============================================================================
-#if JUCE_LINUX || JUCE_BSD
+#if JUCE_LINUX
  #define NAMES_ARE_CASE_SENSITIVE 1
 #endif
 
@@ -1061,25 +1061,7 @@ public:
         expect (! home.isOnCDRomDrive());
         expect (File::getCurrentWorkingDirectory().exists());
         expect (home.setAsCurrentWorkingDirectory());
-
-        {
-            auto homeParent = home;
-            bool noSymlinks = true;
-
-            while (! homeParent.isRoot())
-            {
-                if (homeParent.isSymbolicLink())
-                {
-                    noSymlinks = false;
-                    break;
-                }
-
-                homeParent = homeParent.getParentDirectory();
-            }
-
-            if (noSymlinks)
-                expect (File::getCurrentWorkingDirectory() == home);
-        }
+        expect (File::getCurrentWorkingDirectory() == home);
 
         {
             Array<File> roots;
@@ -1097,11 +1079,7 @@ public:
 
         beginTest ("Writing");
 
-        auto random = getRandom();
-        const auto tempFolderName = "JUCE UnitTests Temp Folder "
-                                  + String::toHexString (random.nextInt())
-                                  + ".folder";
-        File demoFolder (temp.getChildFile (tempFolderName));
+        File demoFolder (temp.getChildFile ("JUCE UnitTests Temp Folder.folder"));
         expect (demoFolder.deleteRecursively());
         expect (demoFolder.createDirectory());
         expect (demoFolder.isDirectory());

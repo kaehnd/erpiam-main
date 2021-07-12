@@ -106,10 +106,9 @@ MainComponent::MainComponent ()
 MainComponent::~MainComponent()
 {
     //[Destructor_pre]. You can add your own custom destruction code here..
-    for (MidiInput* input : midiInputs_)
+    for (auto& input : midiInputs_)
     {
         input->stop();
-        delete input;
     }
     midiInputs_.clear();
     //[/Destructor_pre]
@@ -206,20 +205,19 @@ void MainComponent::timerCallback()
 
     if (lastAudio_ != audio || lastMidi_ != midi)
     {
-        for (MidiInput* input : midiInputs_)
+        for (auto& input : midiInputs_)
         {
-            input->stop();
-            delete input;
+            input->stop();            
         }
         midiInputs_.clear();
 
         for (int i = 0; i < midi_devices.size(); ++i)
         {
-            MidiInput* input = MidiInput::openDevice(i, this);
+            std::unique_ptr<MidiInput> input = MidiInput::openDevice(i, this);
             if (input != nullptr)
             {
                 input->start();
-                midiInputs_.add(input);
+                midiInputs_.add(std::move(input));
             }
         }
         textEditor_->setText(audio + midi + "\n");

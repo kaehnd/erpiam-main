@@ -26,7 +26,6 @@
 #if JUCE_MAC || JUCE_IOS
 
 #include <juce_audio_basics/native/juce_mac_CoreAudioLayouts.h>
-#include <juce_core/native/juce_mac_CFHelpers.h>
 
 namespace juce
 {
@@ -39,15 +38,17 @@ namespace
     StringArray findFileExtensionsForCoreAudioCodecs()
     {
         StringArray extensionsArray;
-        CFObjectHolder<CFArrayRef> extensions;
-        UInt32 sizeOfArray = sizeof (extensions.object);
+        CFArrayRef extensions = nullptr;
+        UInt32 sizeOfArray = sizeof (extensions);
 
-        if (AudioFileGetGlobalInfo (kAudioFileGlobalInfo_AllExtensions, 0, nullptr, &sizeOfArray, &extensions.object) == noErr)
+        if (AudioFileGetGlobalInfo (kAudioFileGlobalInfo_AllExtensions, 0, nullptr, &sizeOfArray, &extensions) == noErr)
         {
-            auto numValues = CFArrayGetCount (extensions.object);
+            auto numValues = CFArrayGetCount (extensions);
 
             for (CFIndex i = 0; i < numValues; ++i)
-                extensionsArray.add ("." + String::fromCFString ((CFStringRef) CFArrayGetValueAtIndex (extensions.object, i)));
+                extensionsArray.add ("." + String::fromCFString ((CFStringRef) CFArrayGetValueAtIndex (extensions, i)));
+
+            CFRelease (extensions);
         }
 
         return extensionsArray;

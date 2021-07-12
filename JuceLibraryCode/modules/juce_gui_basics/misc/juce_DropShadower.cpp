@@ -76,7 +76,10 @@ private:
 
 
 //==============================================================================
-DropShadower::DropShadower (const DropShadow& ds)  : shadow (ds)  {}
+DropShadower::DropShadower (const DropShadow& ds)
+   : owner (nullptr), shadow (ds), reentrant (false)
+{
+}
 
 DropShadower::~DropShadower()
 {
@@ -88,7 +91,7 @@ DropShadower::~DropShadower()
 
     updateParent();
 
-    const ScopedValueSetter<bool> setter (reentrant, true);
+    reentrant = true;
     shadowWindows.clear();
 }
 
@@ -160,7 +163,7 @@ void DropShadower::updateShadows()
     if (reentrant)
         return;
 
-    const ScopedValueSetter<bool> setter (reentrant, true);
+    const ScopedValueSetter<bool> setter (reentrant, true, false);
 
     if (owner == nullptr)
     {
@@ -206,7 +209,7 @@ void DropShadower::updateShadows()
                 if (sw == nullptr)
                     return;
 
-                sw->toBehind (i == 3 ? owner.get() : shadowWindows.getUnchecked (i + 1));
+                sw->toBehind (i == 3 ? owner : shadowWindows.getUnchecked (i + 1));
             }
         }
     }

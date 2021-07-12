@@ -60,19 +60,17 @@ public:
         s.xselection.property  = None;
         s.xselection.time      = evt.xselectionrequest.time;
 
-        auto* display = getDisplay();
-
         if (allowedTypes.contains (targetType))
         {
             s.xselection.property = evt.xselectionrequest.property;
 
-            X11Symbols::getInstance()->xChangeProperty (display, evt.xselectionrequest.requestor, evt.xselectionrequest.property,
+            X11Symbols::getInstance()->xChangeProperty (getDisplay(), evt.xselectionrequest.requestor, evt.xselectionrequest.property,
                                                         targetType, 8, PropModeReplace,
                                                         reinterpret_cast<const unsigned char*> (textOrFiles.toRawUTF8()),
                                                         (int) textOrFiles.getNumBytesAsUTF8());
         }
 
-        X11Symbols::getInstance()->xSendEvent (display, evt.xselectionrequest.requestor, True, 0, &s);
+        X11Symbols::getInstance()->xSendEvent (getDisplay(), evt.xselectionrequest.requestor, True, 0, &s);
     }
 
     void handleExternalDragAndDropStatus (const XClientMessageEvent& clientMsg)
@@ -83,11 +81,9 @@ public:
             canDrop         = false;
             silentRect      = {};
 
-            const auto& atoms = getAtoms();
-
             if ((clientMsg.data.l[1] & 1) != 0
-                && ((Atom) clientMsg.data.l[4] == atoms.XdndActionCopy
-                    || (Atom) clientMsg.data.l[4] == atoms.XdndActionPrivate))
+                && ((Atom) clientMsg.data.l[4] == getAtoms().XdndActionCopy
+                    || (Atom) clientMsg.data.l[4] == getAtoms().XdndActionPrivate))
             {
                 if ((clientMsg.data.l[1] & 2) == 0) // target requests silent rectangle
                     silentRect.setBounds ((int) clientMsg.data.l[2] >> 16, (int) clientMsg.data.l[2] & 0xffff,
@@ -116,11 +112,8 @@ public:
 
     void handleExternalDragMotionNotify()
     {
-        auto* display = getDisplay();
-
-        auto newTargetWindow = externalFindDragTargetWindow (X11Symbols::getInstance()
-                                                               ->xRootWindow (display,
-                                                                              X11Symbols::getInstance()->xDefaultScreen (display)));
+        auto newTargetWindow = externalFindDragTargetWindow (X11Symbols::getInstance()->xRootWindow (getDisplay(),
+                                                                                                     X11Symbols::getInstance()->xDefaultScreen (getDisplay())));
 
         if (targetWindow != newTargetWindow)
         {
@@ -160,15 +153,13 @@ public:
                                                                                            (int) clientMsg.data.l[2] & 0xffff));
         dropPos -= peer->getBounds().getPosition();
 
-        const auto& atoms = getAtoms();
+        auto targetAction = getAtoms().XdndActionCopy;
 
-        auto targetAction = atoms.XdndActionCopy;
-
-        for (int i = numElementsInArray (atoms.allowedActions); --i >= 0;)
+        for (int i = numElementsInArray (getAtoms().allowedActions); --i >= 0;)
         {
-            if ((Atom) clientMsg.data.l[4] == atoms.allowedActions[i])
+            if ((Atom) clientMsg.data.l[4] == getAtoms().allowedActions[i])
             {
-                targetAction = atoms.allowedActions[i];
+                targetAction = getAtoms().allowedActions[i];
                 break;
             }
         }
@@ -215,14 +206,12 @@ public:
             return;
         }
 
-        const auto& atoms = getAtoms();
-
         dragAndDropSourceWindow = (::Window) clientMsg.data.l[0];
 
         if ((clientMsg.data.l[1] & 1) != 0)
         {
             XWindowSystemUtilities::ScopedXLock xLock;
-            XWindowSystemUtilities::GetXProperty prop (dragAndDropSourceWindow, atoms.XdndTypeList, 0, 0x8000000L, false, XA_ATOM);
+            XWindowSystemUtilities::GetXProperty prop (dragAndDropSourceWindow, getAtoms().XdndTypeList, 0, 0x8000000L, false, XA_ATOM);
 
             if (prop.success && prop.actualType == XA_ATOM && prop.actualFormat == 32 && prop.numItems != 0)
             {
@@ -255,9 +244,9 @@ public:
         }
 
         for (int i = 0; i < srcMimeTypeAtomList.size() && dragAndDropCurrentMimeType == 0; ++i)
-            for (int j = 0; j < numElementsInArray (atoms.allowedMimeTypes); ++j)
-                if (srcMimeTypeAtomList[i] == atoms.allowedMimeTypes[j])
-                    dragAndDropCurrentMimeType = atoms.allowedMimeTypes[j];
+            for (int j = 0; j < numElementsInArray (getAtoms().allowedMimeTypes); ++j)
+                if (srcMimeTypeAtomList[i] == getAtoms().allowedMimeTypes[j])
+                    dragAndDropCurrentMimeType = getAtoms().allowedMimeTypes[j];
 
         handleDragAndDropPosition (clientMsg, peer);
     }
@@ -337,26 +326,22 @@ public:
         targetWindow       = windowH;
         completionCallback = std::move (cb);
 
-        auto* display = getDisplay();
-
-        allowedTypes.add (XWindowSystemUtilities::Atoms::getCreating (display, isText ? "text/plain" : "text/uri-list"));
+        allowedTypes.add (XWindowSystemUtilities::Atoms::getCreating (getDisplay(), isText ? "text/plain" : "text/uri-list"));
 
         auto pointerGrabMask = (unsigned int) (Button1MotionMask | ButtonReleaseMask);
 
         XWindowSystemUtilities::ScopedXLock xLock;
 
-        if (X11Symbols::getInstance()->xGrabPointer (display, windowH, True, pointerGrabMask,
+        if (X11Symbols::getInstance()->xGrabPointer (getDisplay(), windowH, True, pointerGrabMask,
                                                      GrabModeAsync, GrabModeAsync, None, None, CurrentTime) == GrabSuccess)
         {
-            const auto& atoms = getAtoms();
-
             // No other method of changing the pointer seems to work, this call is needed from this very context
-            X11Symbols::getInstance()->xChangeActivePointerGrab (display, pointerGrabMask, (Cursor) createDraggingHandCursor(), CurrentTime);
+            X11Symbols::getInstance()->xChangeActivePointerGrab (getDisplay(), pointerGrabMask, (Cursor) createDraggingHandCursor(), CurrentTime);
 
-            X11Symbols::getInstance()->xSetSelectionOwner (display, atoms.XdndSelection, windowH, CurrentTime);
+            X11Symbols::getInstance()->xSetSelectionOwner (getDisplay(), getAtoms().XdndSelection, windowH, CurrentTime);
 
             // save the available types to XdndTypeList
-            X11Symbols::getInstance()->xChangeProperty (display, windowH, atoms.XdndTypeList, XA_ATOM, 32, PropModeReplace,
+            X11Symbols::getInstance()->xChangeProperty (getDisplay(), windowH, getAtoms().XdndTypeList, XA_ATOM, 32, PropModeReplace,
                                                         reinterpret_cast<const unsigned char*> (allowedTypes.getRawDataPointer()), allowedTypes.size());
 
             dragging = true;
@@ -373,36 +358,32 @@ public:
 
 private:
     //==============================================================================
-    const XWindowSystemUtilities::Atoms& getAtoms() const noexcept  { return XWindowSystem::getInstance()->getAtoms(); }
-    ::Display* getDisplay() const noexcept                          { return XWindowSystem::getInstance()->getDisplay(); }
+    XWindowSystemUtilities::Atoms& getAtoms() const  { return XWindowSystem::getInstance()->getAtoms(); }
+    ::Display* getDisplay() const                    { return XWindowSystem::getInstance()->getDisplay(); }
 
     //==============================================================================
     void sendDragAndDropMessage (XClientMessageEvent& msg)
     {
-        auto* display = getDisplay();
-
         msg.type      = ClientMessage;
-        msg.display   = display;
+        msg.display   = getDisplay();
         msg.window    = dragAndDropSourceWindow;
         msg.format    = 32;
         msg.data.l[0] = (long) windowH;
 
         XWindowSystemUtilities::ScopedXLock xLock;
-        X11Symbols::getInstance()->xSendEvent (display, dragAndDropSourceWindow, False, 0, (XEvent*) &msg);
+        X11Symbols::getInstance()->xSendEvent (getDisplay(), dragAndDropSourceWindow, False, 0, (XEvent*) &msg);
     }
 
     bool sendExternalDragAndDropMessage (XClientMessageEvent& msg)
     {
-        auto* display = getDisplay();
-
         msg.type      = ClientMessage;
-        msg.display   = display;
+        msg.display   = getDisplay();
         msg.window    = targetWindow;
         msg.format    = 32;
         msg.data.l[0] = (long) windowH;
 
         XWindowSystemUtilities::ScopedXLock xLock;
-        return X11Symbols::getInstance()->xSendEvent (display, targetWindow, False, 0, (XEvent*) &msg) != 0;
+        return X11Symbols::getInstance()->xSendEvent (getDisplay(), targetWindow, False, 0, (XEvent*) &msg) != 0;
     }
 
     void sendExternalDragAndDropDrop()
@@ -435,9 +416,7 @@ private:
         XClientMessageEvent msg;
         zerostruct (msg);
 
-        const auto& atoms = getAtoms();
-
-        msg.message_type = atoms.XdndPosition;
+        msg.message_type = getAtoms().XdndPosition;
 
         auto mousePos = Desktop::getInstance().getMousePosition();
 
@@ -449,7 +428,7 @@ private:
         msg.data.l[1] = 0;
         msg.data.l[2] = (mousePos.x << 16) | mousePos.y;
         msg.data.l[3] = CurrentTime;
-        msg.data.l[4] = (long) atoms.XdndActionCopy; // this is all JUCE currently supports
+        msg.data.l[4] = (long) getAtoms().XdndActionCopy; // this is all JUCE currently supports
 
         expectingStatus = sendExternalDragAndDropMessage (msg);
     }
@@ -490,11 +469,9 @@ private:
 
         if (dragAndDropSourceWindow != None && dragAndDropCurrentMimeType != None)
         {
-            auto* display = getDisplay();
-
             XWindowSystemUtilities::ScopedXLock xLock;
-            X11Symbols::getInstance()->xConvertSelection (display, getAtoms().XdndSelection, dragAndDropCurrentMimeType,
-                                                          XWindowSystemUtilities::Atoms::getCreating (display, "JXSelectionWindowProperty"),
+            X11Symbols::getInstance()->xConvertSelection (getDisplay(), getAtoms().XdndSelection, dragAndDropCurrentMimeType,
+                                                          XWindowSystemUtilities::Atoms::getCreating (getDisplay(), "JXSelectionWindowProperty"),
                                                           requestor, (::Time) clientMsg.data.l[2]);
         }
     }

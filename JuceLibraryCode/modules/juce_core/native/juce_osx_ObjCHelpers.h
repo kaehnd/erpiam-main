@@ -20,8 +20,6 @@
   ==============================================================================
 */
 
-#include "juce_mac_CFHelpers.h"
-
 /* This file contains a few helper functions that are used internally but which
    need to be kept away from the public headers because they use obj-C symbols.
 */
@@ -232,15 +230,11 @@ static ReturnType ObjCMsgSendSuper (id self, SEL sel, Params... params)
 //==============================================================================
 struct NSObjectDeleter
 {
-    void operator() (NSObject* object) const noexcept
+    void operator()(NSObject* object) const
     {
-        if (object != nullptr)
-            [object release];
+        [object release];
     }
 };
-
-template <typename NSType>
-using NSUniquePtr = std::unique_ptr<NSType, NSObjectDeleter>;
 
 //==============================================================================
 template <typename SuperclassType>
@@ -422,5 +416,20 @@ public:
 private:
     BlockType block;
 };
+
+struct ScopedCFString
+{
+    ScopedCFString() = default;
+    ScopedCFString (String s) : cfString (s.toCFString())  {}
+
+    ~ScopedCFString() noexcept
+    {
+        if (cfString != nullptr)
+            CFRelease (cfString);
+    }
+
+    CFStringRef cfString = {};
+};
+
 
 } // namespace juce

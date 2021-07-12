@@ -23,7 +23,7 @@
   ==============================================================================
 */
 
-#if JUCE_PLUGINHOST_LADSPA && (JUCE_LINUX || JUCE_BSD)
+#if JUCE_PLUGINHOST_LADSPA && JUCE_LINUX
 
 #include <ladspa.h>
 
@@ -220,7 +220,7 @@ public:
     {
         desc.name = getName();
         desc.fileOrIdentifier = module->file.getFullPathName();
-        desc.uniqueId = desc.deprecatedUid = getUID();
+        desc.uid = getUID();
         desc.lastFileModTime = module->file.getLastModificationTime();
         desc.lastInfoUpdateTime = Time::getCurrentTime();
         desc.pluginFormatName = "LADSPA";
@@ -583,7 +583,7 @@ void LADSPAPluginFormat::findAllTypesForFile (OwnedArray<PluginDescription>& res
 
     PluginDescription desc;
     desc.fileOrIdentifier = fileOrIdentifier;
-    desc.uniqueId = desc.deprecatedUid = 0;
+    desc.uid = 0;
 
     auto createdInstance = createInstanceFromDescription (desc, 44100.0, 512);
     auto instance = dynamic_cast<LADSPAPluginInstance*> (createdInstance.get());
@@ -600,7 +600,7 @@ void LADSPAPluginFormat::findAllTypesForFile (OwnedArray<PluginDescription>& res
         {
             if (auto* plugin = instance->module->moduleMain ((size_t) uid))
             {
-                desc.uniqueId = desc.deprecatedUid = uid;
+                desc.uid = uid;
                 desc.name = plugin->Name != nullptr ? plugin->Name : "Unknown";
 
                 if (! arrayContainsPlugin (results, desc))
@@ -631,7 +631,7 @@ void LADSPAPluginFormat::createPluginInstance (const PluginDescription& desc,
 
         if (module != nullptr)
         {
-            shellLADSPAUIDToCreate = desc.uniqueId;
+            shellLADSPAUIDToCreate = desc.uid;
 
             result.reset (new LADSPAPluginInstance (module));
 

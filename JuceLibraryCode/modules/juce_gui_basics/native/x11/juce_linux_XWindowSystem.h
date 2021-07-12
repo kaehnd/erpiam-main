@@ -158,12 +158,13 @@ public:
 
     void copyTextToClipboard (const String&);
     String getTextFromClipboard() const;
-    String getLocalClipboardContent() const noexcept  { return localClipboardContent; }
 
-    ::Display* getDisplay() noexcept                                { return display; }
-    const XWindowSystemUtilities::Atoms& getAtoms() const noexcept  { return atoms; }
+    String getLocalClipboardContent() const    { return localClipboardContent; }
 
-    bool isX11Available() const noexcept  { return xIsAvailable; }
+    ::Display* getDisplay()                    { return display; }
+    XWindowSystemUtilities::Atoms& getAtoms()  { return atoms; }
+
+    bool isX11Available() const noexcept       { return xIsAvailable; }
 
     //==============================================================================
     void handleWindowMessage (LinuxComponentPeer*, XEvent&) const;

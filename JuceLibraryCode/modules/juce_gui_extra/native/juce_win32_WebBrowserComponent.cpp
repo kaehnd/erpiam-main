@@ -538,7 +538,7 @@ private:
                     {
                         String method ("GET");
 
-                        if (! urlRequest.postData.isEmpty())
+                        if (urlRequest.postData.getSize() > 0)
                         {
                             method = "POST";
 

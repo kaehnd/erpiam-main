@@ -23,17 +23,11 @@
   ==============================================================================
 */
 
-#if JUCE_MINGW
-LWSTDAPI IUnknown_GetWindow (IUnknown* punk, HWND* phwnd);
-#endif
-
 namespace juce
 {
 
-// Implemented in juce_win32_Messaging.cpp
-bool dispatchNextMessageOnSystemQueue (bool returnIfNoPendingMessages);
-
-class Win32NativeFileChooser  : private Thread
+class Win32NativeFileChooser  : public std::enable_shared_from_this<Win32NativeFileChooser>,
+                                private Thread
 {
 public:
     enum { charsAvailableForResult = 32768 };
@@ -78,12 +72,7 @@ public:
     ~Win32NativeFileChooser() override
     {
         signalThreadShouldExit();
-
-        while (isThreadRunning())
-        {
-            if (! dispatchNextMessageOnSystemQueue (true))
-                Thread::sleep (1);
-        }
+        waitForThreadToExit (-1);
     }
 
     void open (bool async)
@@ -92,6 +81,8 @@ public:
 
         // the thread should not be running
         nativeDialogRef.set (nullptr);
+
+        weakThis = shared_from_this();
 
         if (async)
         {
@@ -151,6 +142,7 @@ private:
 
     //==============================================================================
     const Component::SafePointer<Component> owner;
+    std::weak_ptr<Win32NativeFileChooser> weakThis;
     String title, filtersString;
     std::unique_ptr<CustomComponentHolder> customComponent;
     String initialPath, returnedString;
@@ -215,7 +207,7 @@ private:
             return ptr;
         }();
 
-        if (item == nullptr || FAILED (dialog.SetDefaultFolder (item)))
+        if (item == nullptr || FAILED (dialog.SetFolder (item)))
             return false;
 
         String filename (files.getData());
@@ -237,15 +229,7 @@ private:
         {
             explicit Events (Win32NativeFileChooser& o) : owner (o) {}
 
-            JUCE_COMRESULT OnTypeChange (IFileDialog* d) override                                                 { return updateHwnd (d); }
-            JUCE_COMRESULT OnFolderChanging (IFileDialog* d, IShellItem*) override                                { return updateHwnd (d); }
-            JUCE_COMRESULT OnFileOk (IFileDialog* d) override                                                     { return updateHwnd (d); }
-            JUCE_COMRESULT OnFolderChange (IFileDialog* d) override                                               { return updateHwnd (d); }
-            JUCE_COMRESULT OnSelectionChange (IFileDialog* d) override                                            { return updateHwnd (d); }
-            JUCE_COMRESULT OnShareViolation (IFileDialog* d, IShellItem*, FDE_SHAREVIOLATION_RESPONSE*) override  { return updateHwnd (d); }
-            JUCE_COMRESULT OnOverwrite (IFileDialog* d, IShellItem*, FDE_OVERWRITE_RESPONSE*) override            { return updateHwnd (d); }
-
-            JUCE_COMRESULT updateHwnd (IFileDialog* d)
+            JUCE_COMRESULT OnTypeChange (IFileDialog* d) override
             {
                 HWND hwnd = nullptr;
                 IUnknown_GetWindow (d, &hwnd);
@@ -259,6 +243,13 @@ private:
 
                 return S_OK;
             }
+
+            JUCE_COMRESULT OnFolderChanging (IFileDialog*, IShellItem*) override                                { return E_NOTIMPL; }
+            JUCE_COMRESULT OnFileOk (IFileDialog*) override                                                     { return E_NOTIMPL; }
+            JUCE_COMRESULT OnFolderChange (IFileDialog*) override                                               { return E_NOTIMPL; }
+            JUCE_COMRESULT OnSelectionChange (IFileDialog*) override                                            { return E_NOTIMPL; }
+            JUCE_COMRESULT OnShareViolation (IFileDialog*, IShellItem*, FDE_SHAREVIOLATION_RESPONSE*) override  { return E_NOTIMPL; }
+            JUCE_COMRESULT OnOverwrite (IFileDialog*, IShellItem*, FDE_OVERWRITE_RESPONSE*) override            { return E_NOTIMPL; }
 
             Win32NativeFileChooser& owner;
         };
@@ -489,40 +480,37 @@ private:
 
         const Remover remover (*this);
 
-       #if ! JUCE_MINGW
         if (SystemStats::getOperatingSystemType() >= SystemStats::WinVista
             && customComponent == nullptr)
         {
             return openDialogVistaAndUp (async);
         }
-       #endif
 
         return openDialogPreVista (async);
     }
 
     void run() override
     {
-        results = [&]
+        struct ScopedCoInitialize
         {
-            struct ScopedCoInitialize
-            {
-                // IUnknown_GetWindow will only succeed when instantiated in a single-thread apartment
-                ScopedCoInitialize() { CoInitializeEx (nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE); }
-                ~ScopedCoInitialize() { CoUninitialize(); }
-            };
+            // IUnknown_GetWindow will only succeed when instantiated in a single-thread apartment
+            ScopedCoInitialize() { CoInitializeEx (nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE); }
+            ~ScopedCoInitialize() { CoUninitialize(); }
+        };
 
-            ScopedCoInitialize scope;
+        ScopedCoInitialize scope;
 
-            return openDialog (true);
-        }();
-
+        auto resultsCopy = openDialog (true);
         auto safeOwner = owner;
-        auto resultCode = results.size() > 0 ? 1 : 0;
+        auto weakThisCopy = weakThis;
 
-        MessageManager::callAsync ([resultCode, safeOwner]
+        MessageManager::callAsync ([resultsCopy, safeOwner, weakThisCopy]
         {
+            if (auto locked = weakThisCopy.lock())
+                locked->results = resultsCopy;
+
             if (safeOwner != nullptr)
-                safeOwner->exitModalState (resultCode);
+                safeOwner->exitModalState (resultsCopy.size() > 0 ? 1 : 0);
         });
     }
 
@@ -772,7 +760,7 @@ class FileChooser::Native     : public std::enable_shared_from_this<Native>,
 public:
     Native (FileChooser& fileChooser, int flags, FilePreviewComponent* previewComp)
         : owner (fileChooser),
-          nativeFileChooser (std::make_unique<Win32NativeFileChooser> (this, flags, previewComp, fileChooser.startingFile,
+          nativeFileChooser (std::make_shared<Win32NativeFileChooser> (this, flags, previewComp, fileChooser.startingFile,
                                                                        fileChooser.title, fileChooser.filters))
     {
         auto mainMon = Desktop::getInstance().getDisplays().getPrimaryDisplay()->userArea;

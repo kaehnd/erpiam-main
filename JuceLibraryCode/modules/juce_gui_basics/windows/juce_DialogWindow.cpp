@@ -27,15 +27,15 @@ namespace juce
 {
 
 DialogWindow::DialogWindow (const String& name, Colour colour,
-                            const bool escapeCloses, const bool onDesktop,
-                            const float scale)
+                            const bool escapeCloses, const bool onDesktop)
     : DocumentWindow (name, colour, DocumentWindow::closeButton, onDesktop),
-      desktopScale (scale),
       escapeKeyTriggersCloseButton (escapeCloses)
 {
 }
 
-DialogWindow::~DialogWindow() = default;
+DialogWindow::~DialogWindow()
+{
+}
 
 bool DialogWindow::escapeKeyPressed()
 {
@@ -78,10 +78,7 @@ class DefaultDialogWindow   : public DialogWindow
 public:
     DefaultDialogWindow (LaunchOptions& options)
         : DialogWindow (options.dialogTitle, options.dialogBackgroundColour,
-                        options.escapeKeyTriggersCloseButton, true,
-                        options.componentToCentreAround != nullptr
-                            ? Component::getApproximateScaleFactorForComponent (options.componentToCentreAround)
-                            : 1.0f)
+                        options.escapeKeyTriggersCloseButton, true)
     {
         setUsingNativeTitleBar (options.useNativeTitleBar);
         setAlwaysOnTop (juce_areThereAnyAlwaysOnTopWindows());

@@ -533,7 +533,6 @@ private:
 
     void updateXml();
 
-    void updateCurrentSetup();
     void createDeviceTypesIfNeeded();
     void scanDevicesIfNeeded();
     void deleteCurrentDevice();

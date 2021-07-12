@@ -58,7 +58,7 @@ public:
 private:
     //[UserVariables]   -- You can add your own custom variables in this section.
     AudioDeviceManager adm_;
-    Array<MidiInput*> midiInputs_;
+    Array<std::unique_ptr<MidiInput>> midiInputs_;
     String lastAudio_;
     String lastMidi_;
     //[/UserVariables]

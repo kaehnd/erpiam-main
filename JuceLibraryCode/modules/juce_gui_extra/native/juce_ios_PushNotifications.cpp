@@ -467,9 +467,9 @@ struct PushNotificationsDelegate
 
 protected:
    #if defined (__IPHONE_10_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_10_0
-    NSUniquePtr<NSObject<UIApplicationDelegate, UNUserNotificationCenterDelegate>> delegate;
+    std::unique_ptr<NSObject<UIApplicationDelegate, UNUserNotificationCenterDelegate>, NSObjectDeleter> delegate;
    #else
-    NSUniquePtr<NSObject<UIApplicationDelegate>> delegate;
+    std::unique_ptr<NSObject<UIApplicationDelegate>, NSObjectDeleter> delegate;
    #endif
 
 private:

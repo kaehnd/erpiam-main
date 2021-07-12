@@ -173,7 +173,7 @@ namespace
     {
        #if JUCE_WINDOWS
         return timeGetTime() * 1000000.0;
-       #elif JUCE_LINUX || JUCE_BSD || JUCE_IOS || JUCE_ANDROID
+       #elif JUCE_LINUX || JUCE_IOS || JUCE_ANDROID
         timeval micro;
         gettimeofday (&micro, nullptr);
         return (double) micro.tv_usec * 1000.0;
@@ -230,7 +230,7 @@ static pointer_sized_int VSTCALLBACK audioMaster (Vst2::AEffect*, int32, int32, 
 #endif
 
 //==============================================================================
-#if JUCE_LINUX || JUCE_BSD
+#if JUCE_LINUX
 
 namespace
 {
@@ -624,7 +624,7 @@ struct ModuleHandle    : public ReferenceCountedObject
     {
         getActiveModules().add (this);
 
-       #if JUCE_WINDOWS || JUCE_LINUX || JUCE_BSD || JUCE_IOS || JUCE_ANDROID
+       #if JUCE_WINDOWS || JUCE_LINUX || JUCE_IOS || JUCE_ANDROID
         fullParentDirectoryPathName = f.getParentDirectory().getFullPathName();
        #elif JUCE_MAC
         FSRef ref;
@@ -644,7 +644,7 @@ struct ModuleHandle    : public ReferenceCountedObject
     String fullParentDirectoryPathName;
    #endif
 
-  #if JUCE_WINDOWS || JUCE_LINUX || JUCE_BSD || JUCE_ANDROID
+  #if JUCE_WINDOWS || JUCE_LINUX || JUCE_ANDROID
     DynamicLibrary module;
 
     bool open()
@@ -711,7 +711,7 @@ struct ModuleHandle    : public ReferenceCountedObject
    #endif
   #else
     Handle resHandle = {};
-    CFUniquePtr<CFBundleRef> bundleRef;
+    CFBundleRef bundleRef = {};
 
    #if JUCE_MAC
     CFBundleRefNum resFileId = {};
@@ -729,25 +729,26 @@ struct ModuleHandle    : public ReferenceCountedObject
         {
             auto* utf8 = file.getFullPathName().toRawUTF8();
 
-            if (auto url = CFUniquePtr<CFURLRef> (CFURLCreateFromFileSystemRepresentation (nullptr, (const UInt8*) utf8,
-                                                                                           (CFIndex) strlen (utf8), file.isDirectory())))
+            if (CFURLRef url = CFURLCreateFromFileSystemRepresentation (nullptr, (const UInt8*) utf8,
+                                                                        (CFIndex) strlen (utf8), file.isDirectory()))
             {
-                bundleRef.reset (CFBundleCreate (kCFAllocatorDefault, url.get()));
+                bundleRef = CFBundleCreate (kCFAllocatorDefault, url);
+                CFRelease (url);
 
                 if (bundleRef != nullptr)
                 {
-                    if (CFBundleLoadExecutable (bundleRef.get()))
+                    if (CFBundleLoadExecutable (bundleRef))
                     {
-                        moduleMain = (MainCall) CFBundleGetFunctionPointerForName (bundleRef.get(), CFSTR("main_macho"));
+                        moduleMain = (MainCall) CFBundleGetFunctionPointerForName (bundleRef, CFSTR("main_macho"));
 
                         if (moduleMain == nullptr)
-                            moduleMain = (MainCall) CFBundleGetFunctionPointerForName (bundleRef.get(), CFSTR("VSTPluginMain"));
+                            moduleMain = (MainCall) CFBundleGetFunctionPointerForName (bundleRef, CFSTR("VSTPluginMain"));
 
                         JUCE_VST_WRAPPER_LOAD_CUSTOM_MAIN
 
                         if (moduleMain != nullptr)
                         {
-                            if (CFTypeRef name = CFBundleGetValueForInfoDictionaryKey (bundleRef.get(), CFSTR("CFBundleName")))
+                            if (CFTypeRef name = CFBundleGetValueForInfoDictionaryKey (bundleRef, CFSTR("CFBundleName")))
                             {
                                 if (CFGetTypeID (name) == CFStringGetTypeID())
                                 {
@@ -762,7 +763,7 @@ struct ModuleHandle    : public ReferenceCountedObject
                                 pluginName = file.getFileNameWithoutExtension();
 
                            #if JUCE_MAC
-                            resFileId = CFBundleOpenBundleResourceMap (bundleRef.get());
+                            resFileId = CFBundleOpenBundleResourceMap (bundleRef);
                            #endif
 
                             ok = true;
@@ -781,7 +782,8 @@ struct ModuleHandle    : public ReferenceCountedObject
 
                     if (! ok)
                     {
-                        CFBundleUnloadExecutable (bundleRef.get());
+                        CFBundleUnloadExecutable (bundleRef);
+                        CFRelease (bundleRef);
                         bundleRef = nullptr;
                     }
                 }
@@ -796,14 +798,14 @@ struct ModuleHandle    : public ReferenceCountedObject
         if (bundleRef != nullptr)
         {
            #if JUCE_MAC
-            CFBundleCloseBundleResourceMap (bundleRef.get(), resFileId);
+            CFBundleCloseBundleResourceMap (bundleRef, resFileId);
            #endif
 
-            if (CFGetRetainCount (bundleRef.get()) == 1)
-                CFBundleUnloadExecutable (bundleRef.get());
+            if (CFGetRetainCount (bundleRef) == 1)
+                CFBundleUnloadExecutable (bundleRef);
 
-            if (CFGetRetainCount (bundleRef.get()) > 0)
-                bundleRef = nullptr;
+            if (CFGetRetainCount (bundleRef) > 0)
+                CFRelease (bundleRef);
         }
     }
 
@@ -1170,7 +1172,7 @@ struct VSTPluginInstance     : public AudioPluginInstance,
         }
 
         desc.fileOrIdentifier = vstModule->file.getFullPathName();
-        desc.uniqueId = desc.deprecatedUid = getUID();
+        desc.uid = getUID();
         desc.lastFileModTime = vstModule->file.getLastModificationTime();
         desc.lastInfoUpdateTime = Time::getCurrentTime();
         desc.pluginFormatName = "VST";
@@ -2108,7 +2110,7 @@ private:
     {
         if (auto* ed = getActiveEditor())
         {
-           #if JUCE_LINUX || JUCE_BSD
+           #if JUCE_LINUX
             const MessageManagerLock mmLock;
            #endif
 
@@ -2186,14 +2188,20 @@ private:
                                       (pointer_sized_int) &canonicalIn.get(), (void*) &canonicalOut.get(), 0.0f);
         }
 
-        const auto arrangement = getSpeakerArrangementWrapper (effect);
+        HeapBlock<Vst2::VstSpeakerArrangement> inArrBlock (1, true), outArrBlock (1, true);
+
+        auto* inArr  = inArrBlock.get();
+        auto* outArr = outArrBlock.get();
+
+        if (! getSpeakerArrangementWrapper (effect, inArr, outArr))
+            inArr = outArr = nullptr;
 
         for (int dir = 0; dir < 2; ++dir)
         {
             const bool isInput = (dir == 0);
             const int opcode = (isInput ? Vst2::effGetInputProperties : Vst2::effGetOutputProperties);
             const int maxChannels = (isInput ? effect->numInputs : effect->numOutputs);
-            const auto* arr = (isInput ? arrangement.in : arrangement.out);
+            const Vst2::VstSpeakerArrangement* arr = (isInput ? inArr : outArr);
             bool busAdded = false;
 
             Vst2::VstPinProperties pinProps;
@@ -2244,7 +2252,12 @@ private:
 
     static bool pluginHasDefaultChannelLayouts (Vst2::AEffect* effect)
     {
-        if (getSpeakerArrangementWrapper (effect).isValid())
+        HeapBlock<Vst2::VstSpeakerArrangement> inArrBlock (1, true), outArrBlock (1, true);
+
+        auto* inArr  = inArrBlock.get();
+        auto* outArr = outArrBlock.get();
+
+        if (getSpeakerArrangementWrapper (effect, inArr, outArr))
             return true;
 
         for (int dir = 0; dir < 2; ++dir)
@@ -2272,35 +2285,19 @@ private:
         return false;
     }
 
-    struct SpeakerArrangements
-    {
-        const Vst2::VstSpeakerArrangement* in;
-        const Vst2::VstSpeakerArrangement* out;
-
-        bool isValid() const noexcept { return in != nullptr && out != nullptr; }
-    };
-
-    static SpeakerArrangements getSpeakerArrangementWrapper (Vst2::AEffect* effect)
+    static bool getSpeakerArrangementWrapper (Vst2::AEffect* effect,
+                                              Vst2::VstSpeakerArrangement* inArr,
+                                              Vst2::VstSpeakerArrangement* outArr)
     {
         // Workaround: unfortunately old JUCE VST-2 plug-ins had a bug and would crash if
         // you try to get the speaker arrangement when there are no input channels present.
         // Hopefully, one day (when there are no more old JUCE plug-ins around), we can
         // comment out the next two lines.
         if (effect->numInputs == 0)
-            return { nullptr, nullptr };
+            return false;
 
-        SpeakerArrangements result;
-        const auto dispatchResult = effect->dispatcher (effect,
-                                                        Vst2::effGetSpeakerArrangement,
-                                                        0,
-                                                        reinterpret_cast<pointer_sized_int> (&result.in),
-                                                        &result.out,
-                                                        0.0f);
-
-        if (dispatchResult != 0)
-            return result;
-
-        return { nullptr, nullptr };
+        return (effect->dispatcher (effect, Vst2::effGetSpeakerArrangement, 0,
+                                          reinterpret_cast<pointer_sized_int> (&inArr), &outArr, 0.0f) != 0);
     }
 
     //==============================================================================
@@ -2747,7 +2744,7 @@ public:
          #endif
           plugin (plug)
     {
-       #if JUCE_LINUX || JUCE_BSD
+       #if JUCE_LINUX
         pluginWindow = None;
         ignoreUnused (pluginRefusesToResize, alreadyInside);
        #elif JUCE_MAC
@@ -2832,7 +2829,7 @@ public:
     {
         if (isOpen)
         {
-           #if JUCE_LINUX || JUCE_BSD
+           #if JUCE_LINUX
             if (pluginWindow != 0)
             {
                 auto clip = g.getClipBounds();
@@ -2866,7 +2863,7 @@ public:
                 ScopedThreadDPIAwarenessSetter threadDpiAwarenessSetter { pluginHWND };
                 MoveWindow (pluginHWND, pos.getX(), pos.getY(), pos.getWidth(), pos.getHeight(), TRUE);
             }
-           #elif JUCE_LINUX || JUCE_BSD
+           #elif JUCE_LINUX
             if (pluginWindow != 0)
             {
                 X11Symbols::getInstance()->xMoveResizeWindow (display, pluginWindow,
@@ -2893,7 +2890,7 @@ public:
         if (auto* peer = getTopLevelComponent()->getPeer())
             setScaleFactorAndDispatchMessage (peer->getPlatformScaleFactor());
 
-       #if JUCE_LINUX || JUCE_BSD
+       #if JUCE_LINUX
         SafePointer<VSTPluginWindow> safeThis (this);
 
         MessageManager::callAsync ([this, safeThis]
@@ -2968,7 +2965,7 @@ public:
                 reentrantGuard = false;
             }
 
-           #if JUCE_LINUX || JUCE_BSD
+           #if JUCE_LINUX
             if (pluginWindow == 0)
             {
                 updatePluginWindowHandle();
@@ -2985,7 +2982,7 @@ public:
     {
         ignoreUnused (e);
 
-       #if JUCE_WINDOWS || JUCE_LINUX || JUCE_BSD
+       #if JUCE_WINDOWS || JUCE_LINUX
         toFront (true);
        #endif
     }
@@ -3143,7 +3140,7 @@ private:
                 }
             }
         }
-       #elif JUCE_LINUX || JUCE_BSD
+       #elif JUCE_LINUX
         updatePluginWindowHandle();
 
         int w = 250, h = 150;
@@ -3211,7 +3208,7 @@ private:
 
             originalWndProc = 0;
             pluginHWND = 0;
-           #elif JUCE_LINUX || JUCE_BSD
+           #elif JUCE_LINUX
             pluginWindow = 0;
            #endif
         }
@@ -3292,7 +3289,7 @@ private:
     }
    #endif
 
-   #if JUCE_LINUX || JUCE_BSD
+   #if JUCE_LINUX
     void updatePluginWindowHandle()
     {
         pluginWindow = getChildWindow ((Window) getWindowHandle());
@@ -3407,7 +3404,7 @@ private:
      HWND pluginHWND = {};
      void* originalWndProc = {};
      int sizeCheckCount = 0;
-    #elif JUCE_LINUX || JUCE_BSD
+    #elif JUCE_LINUX
      ::Display* display = XWindowSystem::getInstance()->getDisplay();
      Window pluginWindow = 0;
     #endif
@@ -3475,7 +3472,7 @@ void VSTPluginFormat::findAllTypesForFile (OwnedArray<PluginDescription>& result
 
     PluginDescription desc;
     desc.fileOrIdentifier = fileOrIdentifier;
-    desc.uniqueId = desc.deprecatedUid = 0;
+    desc.uid = 0;
 
     auto instance = createAndUpdateDesc (*this, desc);
 
@@ -3500,7 +3497,7 @@ void VSTPluginFormat::findAllTypesForFile (OwnedArray<PluginDescription>& result
             if (uid == 0)
                 break;
 
-            desc.uniqueId = desc.deprecatedUid = uid;
+            desc.uid = uid;
             desc.name = shellEffectName;
 
             aboutToScanVSTShellPlugin (desc);
@@ -3509,8 +3506,7 @@ void VSTPluginFormat::findAllTypesForFile (OwnedArray<PluginDescription>& result
 
             if (shellInstance != nullptr)
             {
-                jassert (desc.deprecatedUid == uid);
-                jassert (desc.uniqueId == uid);
+                jassert (desc.uid == uid);
                 desc.hasSharedContainer = true;
                 desc.name = shellEffectName;
 
@@ -3536,7 +3532,7 @@ void VSTPluginFormat::createPluginInstance (const PluginDescription& desc,
 
         if (auto module = ModuleHandle::findOrCreateModule (file))
         {
-            shellUIDToCreate = desc.uniqueId;
+            shellUIDToCreate = desc.uid;
 
             result.reset (VSTPluginInstance::create (module, sampleRate, blockSize));
 
@@ -3568,7 +3564,7 @@ bool VSTPluginFormat::fileMightContainThisPluginType (const String& fileOrIdenti
     return f.isDirectory() && f.hasFileExtension (".vst");
   #elif JUCE_WINDOWS
     return f.existsAsFile() && f.hasFileExtension (".dll");
-  #elif JUCE_LINUX || JUCE_BSD || JUCE_ANDROID
+  #elif JUCE_LINUX || JUCE_ANDROID
     return f.existsAsFile() && f.hasFileExtension (".so");
   #endif
 }
@@ -3622,7 +3618,7 @@ FileSearchPath VSTPluginFormat::getDefaultLocationsToSearch()
 {
    #if JUCE_MAC
     return FileSearchPath ("~/Library/Audio/Plug-Ins/VST;/Library/Audio/Plug-Ins/VST");
-   #elif JUCE_LINUX || JUCE_BSD || JUCE_ANDROID
+   #elif JUCE_LINUX || JUCE_ANDROID
     return FileSearchPath (SystemStats::getEnvironmentVariable ("VST_PATH",
                                                                 "/usr/lib/vst;/usr/local/lib/vst;~/.vst")
                              .replace (":", ";"));
@@ -3637,11 +3633,16 @@ FileSearchPath VSTPluginFormat::getDefaultLocationsToSearch()
     return paths;
    #elif JUCE_IOS
     // on iOS you can only load plug-ins inside the hosts bundle folder
-    CFUniquePtr<CFURLRef> relativePluginDir (CFBundleCopyBuiltInPlugInsURL (CFBundleGetMainBundle()));
-    CFUniquePtr<CFURLRef> pluginDir (CFURLCopyAbsoluteURL (relativePluginDir.get()));
+    CFURLRef relativePluginDir = CFBundleCopyBuiltInPlugInsURL (CFBundleGetMainBundle());
+    CFURLRef pluginDir = CFURLCopyAbsoluteURL (relativePluginDir);
+    CFRelease (relativePluginDir);
 
-    CFUniquePtr<CFStringRef> path (CFURLCopyFileSystemPath (pluginDir.get(), kCFURLPOSIXPathStyle));
-    FileSearchPath retval (String (CFStringGetCStringPtr (path.get(), kCFStringEncodingUTF8)));
+    CFStringRef path = CFURLCopyFileSystemPath (pluginDir, kCFURLPOSIXPathStyle);
+    CFRelease (pluginDir);
+
+    FileSearchPath retval (String (CFStringGetCStringPtr (path, kCFStringEncodingUTF8)));
+    CFRelease (path);
+
     return retval;
    #endif
 }

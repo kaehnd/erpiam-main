@@ -174,7 +174,7 @@ String SystemStats::getStackBacktrace()
 
    #else
     void* stack[128];
-    auto frames = backtrace (stack, numElementsInArray (stack));
+    int frames = backtrace (stack, numElementsInArray (stack));
     char** frameStrings = backtrace_symbols (stack, frames);
 
     for (int i = 0; i < frames; ++i)

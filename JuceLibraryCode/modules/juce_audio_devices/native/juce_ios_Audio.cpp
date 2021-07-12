@@ -76,7 +76,7 @@ bool getNotificationValueForKey (NSNotification* notification, NSString* key, NS
     return false;
 }
 
-} // namespace juce
+} // juce namespace
 
 //==============================================================================
 @interface iOSAudioSessionNative  : NSObject

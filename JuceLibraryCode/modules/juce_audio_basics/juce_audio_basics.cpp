@@ -86,7 +86,3 @@
 #include "sources/juce_ReverbAudioSource.cpp"
 #include "sources/juce_ToneGeneratorAudioSource.cpp"
 #include "synthesisers/juce_Synthesiser.cpp"
-
-#if JUCE_UNIT_TESTS
- #include "utilities/juce_ADSR_test.cpp"
-#endif

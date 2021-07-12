@@ -296,6 +296,7 @@ public:
 
         if (isSharedWindow)
         {
+            r.origin.y = [[view superview] frame].size.height - (r.origin.y + r.size.height);
             [view setFrame: r];
         }
         else
@@ -324,6 +325,10 @@ public:
             r = [viewWindow convertRectToScreen: r];
 
             flipScreenRect (r);
+        }
+        else
+        {
+            r.origin.y = [[view superview] frame].size.height - r.origin.y - r.size.height;
         }
 
         return convertToRectInt (r);
@@ -432,7 +437,7 @@ public:
             if (NSWindow* const viewWindow = [view window])
             {
                 NSRect windowFrame = [viewWindow frame];
-                NSPoint windowPoint = [view convertPoint: NSMakePoint (localPos.x, localPos.y) toView: nil];
+                NSPoint windowPoint = [view convertPoint: NSMakePoint (localPos.x, viewFrame.size.height - localPos.y) toView: nil];
                 NSPoint screenPoint = NSMakePoint (windowFrame.origin.x + windowPoint.x,
                                                    windowFrame.origin.y + windowPoint.y);
 
@@ -443,7 +448,7 @@ public:
         }
 
         NSView* v = [view hitTest: NSMakePoint (viewFrame.origin.x + localPos.getX(),
-                                                viewFrame.origin.y + localPos.getY())];
+                                                viewFrame.origin.y + viewFrame.size.height - localPos.getY())];
 
         return trueIfInAChildWindow ? (v != nil)
                                     : (v == view);
@@ -458,8 +463,8 @@ public:
             NSRect v = [view convertRect: [view frame] toView: nil];
             NSRect w = [window frame];
 
-            b.setTop ((int) v.origin.y);
-            b.setBottom ((int) (w.size.height - (v.origin.y + v.size.height)));
+            b.setTop ((int) (w.size.height - (v.origin.y + v.size.height)));
+            b.setBottom ((int) v.origin.y);
             b.setLeft ((int) v.origin.x);
             b.setRight ((int) (w.size.width - (v.origin.x + v.size.width)));
         }
@@ -803,7 +808,7 @@ public:
     {
         // (need to retain this in case a modal loop runs in handleKeyEvent and
         // our event object gets lost)
-        const NSUniquePtr<NSEvent> r ([ev retain]);
+        const std::unique_ptr<NSEvent, NSObjectDeleter> r ([ev retain]);
 
         updateKeysDown (ev, true);
         bool used = handleKeyEvent (ev, true);
@@ -833,7 +838,7 @@ public:
     void redirectModKeyChange (NSEvent* ev)
     {
         // (need to retain this in case a modal loop runs and our event object gets lost)
-        const NSUniquePtr<NSEvent> r ([ev retain]);
+        const std::unique_ptr<NSEvent, NSObjectDeleter> r ([ev retain]);
 
         keysCurrentlyDown.clear();
         handleKeyUpOrDown (true);
@@ -908,15 +913,14 @@ public:
        #if USE_COREGRAPHICS_RENDERING
         if (usingCoreGraphics)
         {
-            const auto height = getComponent().getHeight();
-            CGContextConcatCTM (cg, CGAffineTransformMake (1, 0, 0, -1, 0, height));
-            CoreGraphicsContext context (cg, (float) height);
-            handlePaint (context);
+            CoreGraphicsContext context (cg, (float) [view frame].size.height);
+            invokePaint (context);
         }
         else
        #endif
         {
-            const Point<int> offset (-roundToInt (r.origin.x), -roundToInt (r.origin.y));
+            const Point<int> offset (-roundToInt (r.origin.x),
+                                     -roundToInt ([view frame].size.height - (r.origin.y + r.size.height)));
             auto clipW = (int) (r.size.width  + 0.5f);
             auto clipH = (int) (r.size.height + 0.5f);
 
@@ -937,18 +941,17 @@ public:
                         clip.scaleAll (intScale);
 
                     auto context = component.getLookAndFeel()
-                                            .createGraphicsContext (temp, offset * intScale, clip);
+                                     .createGraphicsContext (temp, offset * intScale, clip);
 
                     if (intScale != 1)
                         context->addTransform (AffineTransform::scale (displayScale));
 
-                    handlePaint (*context);
+                    invokePaint (*context);
                 }
 
                 detail::ColorSpacePtr colourSpace { CGColorSpaceCreateWithName (kCGColorSpaceSRGB) };
                 CGImageRef image = juce_createCoreGraphicsImage (temp, colourSpace.get(), false);
-                CGContextConcatCTM (cg, CGAffineTransformMake (1, 0, 0, -1, r.origin.x, r.origin.y + clipH));
-                CGContextDrawImage (cg, CGRectMake (0.0f, 0.0f, clipW, clipH), image);
+                CGContextDrawImage (cg, CGRectMake (r.origin.x, r.origin.y, clipW, clipH), image);
                 CGImageRelease (image);
             }
         }
@@ -961,7 +964,7 @@ public:
         // a few when there's a lot of activity.
         // As a work around for this, we use a RectangleList to do our own coalescing of regions before
         // asynchronously asking the OS to repaint them.
-        deferredRepaints.add ((float) area.getX(), (float) area.getY(),
+        deferredRepaints.add ((float) area.getX(), (float) ([view frame].size.height - area.getBottom()),
                               (float) area.getWidth(), (float) area.getHeight());
 
         if (isTimerRunning())
@@ -1003,6 +1006,11 @@ public:
 
         lastRepaintTime = Time::getMillisecondCounter();
         deferredRepaints.clear();
+    }
+
+    void invokePaint (LowLevelGraphicsContext& context)
+    {
+        handlePaint (context);
     }
 
     void performAnyPendingRepaintsNow() override
@@ -1234,7 +1242,7 @@ public:
         String unmodified;
 
        #if JUCE_SUPPORT_CARBON
-        if (auto currentKeyboard = CFUniquePtr<TISInputSourceRef> (TISCopyCurrentKeyboardInputSource()))
+        if (TISInputSourceRef currentKeyboard = TISCopyCurrentKeyboardInputSource())
         {
             if (auto layoutData = (CFDataRef) TISGetInputSourceProperty (currentKeyboard,
                                                                          kTISPropertyUnicodeKeyLayoutData))
@@ -1251,6 +1259,8 @@ public:
                         unmodified = String (CharPointer_UTF16 (reinterpret_cast<CharPointer_UTF16::CharType*> (buffer)), 4);
                 }
             }
+
+            CFRelease (currentKeyboard);
         }
 
         // did the above layout conversion fail
@@ -1312,7 +1322,7 @@ public:
     static Point<float> getMousePos (NSEvent* e, NSView* view)
     {
         NSPoint p = [view convertPoint: [e locationInWindow] fromView: nil];
-        return { (float) p.x, (float) p.y };
+        return { (float) p.x, (float) ([view frame].size.height - p.y) };
     }
 
     static int getModifierForButtonNumber (const NSInteger num)
@@ -1348,7 +1358,7 @@ public:
 
         NSPoint p = [view convertPoint: [sender draggingLocation] fromView: nil];
         ComponentPeer::DragInfo dragInfo;
-        dragInfo.position.setXY ((int) p.x, (int) p.y);
+        dragInfo.position.setXY ((int) p.x, (int) ([view frame].size.height - p.y));
 
         if (contentType == NSPasteboardTypeString)
             dragInfo.text = nsStringToJuce ([pasteboard stringForType: NSPasteboardTypeString]);
@@ -1514,12 +1524,13 @@ private:
         [view getRectsBeingDrawn: &rects count: &numRects];
 
         const Rectangle<int> clipBounds (clipW, clipH);
+        auto viewH = [view frame].size.height;
 
         clip.ensureStorageAllocated ((int) numRects);
 
         for (int i = 0; i < numRects; ++i)
             clip.addWithoutMerging (clipBounds.getIntersection (Rectangle<int> (roundToInt (rects[i].origin.x) + offset.x,
-                                                                                roundToInt (rects[i].origin.y) + offset.y,
+                                                                                roundToInt (viewH - (rects[i].origin.y + rects[i].size.height)) + offset.y,
                                                                                 roundToInt (rects[i].size.width),
                                                                                 roundToInt (rects[i].size.height))));
     }
@@ -1732,8 +1743,6 @@ struct JuceNSViewClass   : public ObjCClass<NSView>
         addMethod (@selector (cut:),                          cut,                        "v@:@");
         addMethod (@selector (selectAll:),                    selectAll,                  "v@:@");
 
-        addMethod (@selector (isFlipped),                     isFlipped,                  "c@:");
-
         addMethod (NSViewComponentPeer::dismissModalsSelector,  dismissModals,            "v@:");
         addMethod (NSViewComponentPeer::asyncMouseDownSelector, asyncMouseDown,           "v@:@");
         addMethod (NSViewComponentPeer::asyncMouseUpSelector,   asyncMouseUp,             "v@:@");
@@ -1808,8 +1817,6 @@ private:
     static void viewDidMoveToWindow (id self, SEL)             { if (auto* p = getOwner (self)) p->viewMovedToWindow(); }
     static void dismissModals (id self, SEL)                   { if (auto* p = getOwner (self)) p->dismissModals(); }
     static void becomeKey (id self, SEL)                       { if (auto* p = getOwner (self)) p->becomeKey(); }
-
-    static BOOL isFlipped (id, SEL)                            { return true; }
 
     static void viewWillDraw (id self, SEL)
     {
@@ -2094,7 +2101,6 @@ struct JuceNSWindowClass   : public ObjCClass<NSWindow>
         addMethod (@selector (windowWillStartLiveResize:),          windowWillStartLiveResize, "v@:@");
         addMethod (@selector (windowDidEndLiveResize:),             windowDidEndLiveResize,    "v@:@");
         addMethod (@selector (window:shouldPopUpDocumentPathMenu:), shouldPopUpPathMenu, "B@:@", @encode (NSMenu*));
-        addMethod (@selector (isFlipped),                           isFlipped,                 "c@:");
 
         addMethod (@selector (window:shouldDragDocumentWithEvent:from:withPasteboard:),
                    shouldAllowIconDrag, "B@:@", @encode (NSEvent*), @encode (NSPoint), @encode (NSPasteboard*));
@@ -2111,8 +2117,6 @@ private:
     }
 
     //==============================================================================
-    static BOOL isFlipped (id, SEL) { return true; }
-
     static BOOL canBecomeKeyWindow (id self, SEL)
     {
         auto* owner = getOwner (self);
@@ -2184,6 +2188,7 @@ private:
             return proposedFrameSize;
 
         NSRect frameRect = [(NSWindow*) self frame];
+        frameRect.origin.y -= proposedFrameSize.height - frameRect.size.height;
         frameRect.size = proposedFrameSize;
 
         frameRect = owner->constrainRect (frameRect);

@@ -3,3 +3,6 @@ Builds/MacOSX/*.xcodeproj/xcuserdata
 Builds/MacOSX/build
 Builds/MacOSX/*.xcodeproj/project.xcworkspace/xcuserdata
 Builds/LinuxMakefile/build
+Builds/VisualStudio2019/x64
+Builds/VisualStudio2019/x86
+.vs

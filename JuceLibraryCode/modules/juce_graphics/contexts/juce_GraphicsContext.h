@@ -584,7 +584,7 @@ public:
 
     //==============================================================================
     /** Returns the position of the bounding box for the current clipping region.
-        @see clipRegionIntersects
+        @see getClipRegion, clipRegionIntersects
     */
     Rectangle<int> getClipBounds() const;
 

@@ -579,7 +579,7 @@ public:
    #endif
 
     //==============================================================================
-    JUCE_DECLARE_SINGLETON (X11Symbols, false)
+    JUCE_DECLARE_SINGLETON_SINGLETHREADED_MINIMAL (X11Symbols)
 
 private:
     X11Symbols() = default;

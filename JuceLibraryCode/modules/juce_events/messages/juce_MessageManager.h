@@ -333,6 +333,7 @@ private:
     static void* exitModalLoopCallback (void*);
     static void doPlatformSpecificInitialisation();
     static void doPlatformSpecificShutdown();
+    static bool dispatchNextMessageOnSystemQueue (bool returnIfNoPendingMessages);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MessageManager)
 };

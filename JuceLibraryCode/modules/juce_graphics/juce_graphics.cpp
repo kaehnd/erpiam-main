@@ -75,7 +75,7 @@
  #import <QuartzCore/QuartzCore.h>
  #import <CoreText/CoreText.h>
 
-#elif JUCE_LINUX || JUCE_BSD
+#elif JUCE_LINUX
  #ifndef JUCE_USE_FREETYPE
   #define JUCE_USE_FREETYPE 1
  #endif
@@ -147,7 +147,7 @@
   #include "native/juce_win32_Direct2DGraphicsContext.cpp"
  #endif
 
-#elif JUCE_LINUX || JUCE_BSD
+#elif JUCE_LINUX
  #include "native/juce_linux_Fonts.cpp"
  #include "native/juce_linux_IconHelpers.cpp"
 

@@ -189,13 +189,20 @@ private:
                 jassert (filter.upToLastOccurrenceOf (".", true, false) == "*.");
 
                 auto fileExtension = filter.fromLastOccurrenceOf (".", false, false);
-                CFUniquePtr<CFStringRef> fileExtensionCF (fileExtension.toCFString());
+                auto fileExtensionCF = fileExtension.toCFString();
 
                 if (firstExtension.isEmpty())
                     firstExtension = fileExtension;
 
-                if (auto tag = CFUniquePtr<CFStringRef> (UTTypeCreatePreferredIdentifierForTag (kUTTagClassFilenameExtension, fileExtensionCF.get(), nullptr)))
-                    result.add (String::fromCFString (tag.get()));
+                auto tag = UTTypeCreatePreferredIdentifierForTag (kUTTagClassFilenameExtension, fileExtensionCF, nullptr);
+
+                if (tag != nullptr)
+                {
+                    result.add (String::fromCFString (tag));
+                    CFRelease (tag);
+                }
+
+                CFRelease (fileExtensionCF);
             }
         }
         else
@@ -351,8 +358,8 @@ private:
 
     //==============================================================================
     FileChooser& owner;
-    NSUniquePtr<NSObject<UIDocumentPickerDelegate>> delegate;
-    NSUniquePtr<UIDocumentPickerViewController> controller;
+    std::unique_ptr<NSObject<UIDocumentPickerDelegate>, NSObjectDeleter> delegate;
+    std::unique_ptr<UIDocumentPickerViewController,     NSObjectDeleter> controller;
     UIViewComponentPeer* peer = nullptr;
 
     static FileChooserDelegateClass fileChooserDelegateClass;

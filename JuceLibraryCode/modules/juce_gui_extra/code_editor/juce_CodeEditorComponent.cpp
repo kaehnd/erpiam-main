@@ -1321,7 +1321,7 @@ bool CodeEditorComponent::perform (const InvocationInfo& info)
 void CodeEditorComponent::lookAndFeelChanged()
 {
     caret.reset (getLookAndFeel().createCaretComponent (this));
-    addAndMakeVisible (caret.get());
+    addAndMakeVisible (*caret);
 }
 
 bool CodeEditorComponent::performCommand (const CommandID commandID)

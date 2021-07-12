@@ -33,7 +33,7 @@ namespace DirectWriteTypeLayout
     {
     public:
         CustomDirectWriteTextRenderer (IDWriteFontCollection& fonts, const AttributedString& as)
-            : ComBaseClassHelper (0),
+            : ComBaseClassHelper<IDWriteTextRenderer> (0),
               attributedString (as),
               fontCollection (fonts)
         {
@@ -419,17 +419,13 @@ namespace DirectWriteTypeLayout
     }
 }
 
-static bool canAllTypefacesAndFontsBeUsedInLayout (const AttributedString& text)
+static bool canAllTypefacesBeUsedInLayout (const AttributedString& text)
 {
     auto numCharacterAttributes = text.getNumAttributes();
 
     for (int i = 0; i < numCharacterAttributes; ++i)
-    {
-        const auto& font = text.getAttribute (i).font;
-
-        if (font.getHorizontalScale() != 1.0f || dynamic_cast<WindowsDirectWriteTypeface*> (font.getTypeface()) == nullptr)
+        if (dynamic_cast<WindowsDirectWriteTypeface*> (text.getAttribute(i).font.getTypeface()) == nullptr)
             return false;
-    }
 
     return true;
 }
@@ -439,7 +435,7 @@ static bool canAllTypefacesAndFontsBeUsedInLayout (const AttributedString& text)
 bool TextLayout::createNativeLayout (const AttributedString& text)
 {
    #if JUCE_USE_DIRECTWRITE
-    if (! canAllTypefacesAndFontsBeUsedInLayout (text))
+    if (! canAllTypefacesBeUsedInLayout (text))
         return false;
 
     SharedResourcePointer<Direct2DFactories> factories;

@@ -34,6 +34,6 @@ namespace erpiam
         
         class Pimpl;
     private:
-        ScopedPointer<Pimpl> pimpl_;
+        std::unique_ptr<Pimpl> pimpl_;
     };
 }

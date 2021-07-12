@@ -60,10 +60,10 @@ private:
     //==============================================================================
     class ShadowWindow;
 
-    WeakReference<Component> owner;
+    Component* owner;
     OwnedArray<Component> shadowWindows;
     DropShadow shadow;
-    bool reentrant = false;
+    bool reentrant;
     WeakReference<Component> lastParentComp;
 
     void componentMovedOrResized (Component&, bool, bool) override;

@@ -402,8 +402,7 @@ private:
     template <typename T = ElementType>
     TriviallyCopyableVoid<T> addArrayInternal (const ElementType* otherElements, int numElements)
     {
-        if (numElements > 0)
-            memcpy (elements + numUsed, otherElements, (size_t) numElements * sizeof (ElementType));
+        memcpy (elements + numUsed, otherElements, (size_t) numElements * sizeof (ElementType));
     }
 
     template <typename Type, typename T = ElementType>
