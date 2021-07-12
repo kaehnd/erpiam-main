@@ -2,17 +2,16 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2017 - ROLI Ltd.
+   Copyright (c) 2020 - Raw Material Software Limited
 
    JUCE is an open source library subject to commercial or open-source
    licensing.
 
-   By using JUCE, you agree to the terms of both the JUCE 5 End-User License
-   Agreement and JUCE 5 Privacy Policy (both updated and effective as of the
-   27th April 2017).
+   By using JUCE, you agree to the terms of both the JUCE 6 End-User License
+   Agreement and JUCE Privacy Policy (both effective as of the 16th June 2020).
 
-   End User License Agreement: www.juce.com/juce-5-licence
-   Privacy Policy: www.juce.com/juce-5-privacy-policy
+   End User License Agreement: www.juce.com/juce-6-licence
+   Privacy Policy: www.juce.com/juce-privacy-policy
 
    Or: You may also use this code under the terms of the GPL v3 (see
    www.gnu.org/licenses).
@@ -43,10 +42,12 @@ struct NSViewResizeWatcher
         callback = [cls.createInstance() init];
         ViewFrameChangeCallbackClass::setTarget (callback, this);
 
+        JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wundeclared-selector")
         [[NSNotificationCenter defaultCenter]  addObserver: callback
                                                   selector: @selector (frameChanged:)
                                                       name: NSViewFrameDidChangeNotification
                                                     object: view];
+        JUCE_END_IGNORE_WARNINGS_GCC_LIKE
     }
 
     void detachViewWatcher()
@@ -70,7 +71,11 @@ private:
         ViewFrameChangeCallbackClass()  : ObjCClass<NSObject> ("JUCE_NSViewCallback_")
         {
             addIvar<NSViewResizeWatcher*> ("target");
+
+            JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wundeclared-selector")
             addMethod (@selector (frameChanged:),  frameChanged, "v@:@");
+            JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+
             registerClass();
         }
 
@@ -113,32 +118,19 @@ public:
         attachViewWatcher (view);
     }
 
-    ~NSViewAttachment()
+    ~NSViewAttachment() override
     {
         detachViewWatcher();
         removeFromParent();
         [view release];
     }
 
-    void componentMovedOrResized (Component& comp, bool wasMoved, bool wasResized) override
-    {
-        ComponentMovementWatcher::componentMovedOrResized (comp, wasMoved, wasResized);
-
-        // The ComponentMovementWatcher version of this method avoids calling
-        // us when the top-level comp is resized, but for an NSView we need to know this
-        // because with inverted coordinates, we need to update the position even if the
-        // top-left pos hasn't changed
-        if (comp.isOnDesktop() && wasResized)
-            componentMovedOrResized (wasMoved, wasResized);
-    }
-
     void componentMovedOrResized (bool /*wasMoved*/, bool /*wasResized*/) override
     {
         if (auto* peer = owner.getTopLevelComponent()->getPeer())
         {
-            auto r = makeNSRect (peer->getAreaCoveredBy (owner));
-            r.origin.y = [[view superview] frame].size.height - (r.origin.y + r.size.height);
-            [view setFrame: r];
+            const auto newArea = makeNSRect (peer->getAreaCoveredBy (owner));
+            [view setFrame: newArea];
         }
     }
 
@@ -199,8 +191,8 @@ private:
 };
 
 //==============================================================================
-NSViewComponent::NSViewComponent() {}
-NSViewComponent::~NSViewComponent() {}
+NSViewComponent::NSViewComponent() = default;
+NSViewComponent::~NSViewComponent() = default;
 
 void NSViewComponent::setView (void* view)
 {
@@ -227,8 +219,15 @@ void NSViewComponent::resizeToFitView()
 {
     if (attachment != nullptr)
     {
-        auto r = [static_cast<NSViewAttachment*> (attachment.get())->view frame];
+        auto* view = static_cast<NSViewAttachment*> (attachment.get())->view;
+        auto r = [view frame];
         setBounds (Rectangle<int> ((int) r.size.width, (int) r.size.height));
+
+        if (auto* peer = getTopLevelComponent()->getPeer())
+        {
+            const auto position = peer->getAreaCoveredBy (*this).getPosition().toFloat();
+            [view setFrameOrigin: NSMakePoint (position.x, position.y)];
+        }
     }
 }
 
